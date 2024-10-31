@@ -1,0 +1,48 @@
+name: "checkly"
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CHECKLY_API_KEY: ${{ secrets.CHECKLY_API_KEY }}
+  CHECKLY_ACCOUNT_ID: ${{ secrets.CHECKLY_ACCOUNT_ID }}
+  CHECKLY_TEST_ENVIRONMENT: "test"
+
+jobs:
+  test-e2e:
+    name: Test E2E on Checkly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+
+      - name: Restore or cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Run checks
+        id: run-checks
+        run: npx checkly -v && npx checkly test -e ENVIRONMENT_URL=${{ env.ENVIRONMENT_URL }} --reporter=github --record
+
+      - name: Create summary
+        id: create-summary
+        run: cat checkly-github-report.md > $GITHUB_STEP_SUMMARY
+
+      - name: Deploy checks
+        id: deploy-checks
+        if: steps.run-checks.outcome == 'success'
+        run: npx checkly deploy --force
